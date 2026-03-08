@@ -1,0 +1,9 @@
+wallets.csv
+mining_stats.csv
+__pycache__/
+*.pyc
+.DS_Store
+.env
+venv/
+env/
+.vscode/
