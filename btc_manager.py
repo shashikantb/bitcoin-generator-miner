@@ -8,6 +8,7 @@ from bit import Key
 
 # Configuration
 WALLET_FILE = 'wallets.csv'
+FOUND_FILE = 'found_wallets.csv'
 BATCH_SIZE = 20  # Reduced batch size for API compatibility
 GENERATE_LIMIT = 100  # Generate 100 before checking (faster feedback loop for brainwallets)
 
@@ -25,6 +26,12 @@ def create_wallet_database():
             writer = csv.writer(f)
             writer.writerow(['Timestamp', 'Type', 'Private Key (WIF)', 'Address', 'Balance (BTC)', 'Total Received (BTC)'])
         print(f"Created wallet database: {WALLET_FILE}")
+
+    if not os.path.exists(FOUND_FILE):
+        with open(FOUND_FILE, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Timestamp', 'Type', 'Private Key (WIF)', 'Address', 'Balance (BTC)', 'Total Received (BTC)', 'Status'])
+        print(f"Created found wallets database: {FOUND_FILE}")
 
 def generate_brainwallet():
     """Generates a key from a random combination of words."""
@@ -130,19 +137,34 @@ def start_mining_simulation():
             
             # 3. Save Results
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            
             with open(WALLET_FILE, 'a', newline='') as f:
                 writer = csv.writer(f)
+                
+                # We'll also open the found file in append mode if needed, but let's do it inside the loop to keep logic simple or open it once.
+                # Opening inside loop is inefficient if many hits, but hits are rare.
+                
                 for wif, addr, w_type in zip(current_batch_wifs, current_batch_addrs, current_batch_types):
                     data = final_results.get(addr, {'balance': 0.0, 'received': 0.0})
                     bal = data['balance']
                     rec = data['received']
                     
+                    # Save to main DB
                     writer.writerow([timestamp, w_type, wif, addr, bal, rec])
                     
+                    status = None
                     if bal > 0:
+                        status = "JACKPOT"
                         print(f"\n[!!!] JACKPOT! FUNDS FOUND! Address: {addr} | Balance: {bal} BTC")
                     elif rec > 0:
+                        status = "USED_HISTORY"
                         print(f"\n[!] FOUND USED WALLET! Address: {addr} | History: {rec} BTC (Empty Now)")
+                    
+                    # Save to Found DB if special
+                    if status:
+                        with open(FOUND_FILE, 'a', newline='') as f_found:
+                            writer_found = csv.writer(f_found)
+                            writer_found.writerow([timestamp, w_type, wif, addr, bal, rec, status])
             
             print(f"Batch Complete. Checked {len(current_batch_addrs)} keys.")
             

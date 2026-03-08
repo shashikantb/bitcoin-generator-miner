@@ -21,6 +21,16 @@ def get_latest_block_template():
         pass
     return None
 
+def get_network_difficulty():
+    """Fetch current mining difficulty."""
+    try:
+        response = requests.get('https://blockchain.info/q/getdifficulty')
+        if response.status_code == 200:
+            return float(response.text)
+    except:
+        pass
+    return 80000000000000.0 # Fallback (approximate)
+
 def miner_worker(worker_id, block_header_prefix, start_nonce, range_size, stats_queue):
     """
     Worker process that mines a specific range of nonces.
@@ -56,15 +66,15 @@ def miner_worker(worker_id, block_header_prefix, start_nonce, range_size, stats_
             hashes = 0
             start_time = time.time()
 
-def log_stats(total_hashrate, total_hashes):
+def log_stats(total_hashrate, total_hashes, difficulty):
     """Updates the CSV file for the dashboard."""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     
     # Overwrite mode to keep file small (Dashboard just reads last line)
     with open(MINING_LOG_FILE, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Timestamp', 'Hashrate (H/s)', 'Total Hashes'])
-        writer.writerow([timestamp, total_hashrate, total_hashes])
+        writer.writerow(['Timestamp', 'Hashrate (H/s)', 'Total Hashes', 'Difficulty'])
+        writer.writerow([timestamp, total_hashrate, total_hashes, difficulty])
 
 def start_mining_pool():
     # Setup
@@ -74,11 +84,14 @@ def start_mining_pool():
     print("----------------------------------------------------------------")
     
     block_info = get_latest_block_template()
+    difficulty = get_network_difficulty()
+    
     if not block_info:
         # Fallback if offline
         block_info = {'height': 999999, 'hash': '0000000000000000000abc', 'time': int(time.time())}
         
     print(f"Mining Block: {block_info['height'] + 1}")
+    print(f"Network Difficulty: {difficulty:,.0f}")
     print("Start Hashing...")
 
     # Shared Queue for stats
@@ -121,10 +134,10 @@ def start_mining_pool():
             total_hashrate = sum(worker_hashrates.values())
             
             # Log to file for dashboard
-            log_stats(total_hashrate, total_hashes_lifetime)
+            log_stats(total_hashrate, total_hashes_lifetime, difficulty)
             
             # Print to terminal
-            print(f"Total Hashrate: {total_hashrate/1000:.2f} kH/s | Total Hashes: {total_hashes_lifetime:,}", end="\r")
+            print(f"Total Hashrate: {total_hashrate/1000:.2f} kH/s | Total Hashes: {total_hashes_lifetime:,} | Diff: {difficulty:,.0f}", end="\r")
             
             time.sleep(0.5)
             

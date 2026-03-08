@@ -45,13 +45,15 @@ st.markdown("### Real-time Monitoring Dashboard")
 
 # --- MINING STATS ---
 st.subheader("⛏️ CPU Miner Status (Real-time)")
-col_m1, col_m2, col_m3 = st.columns(3)
+col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 with col_m1:
     hashrate_ph = st.empty()
 with col_m2:
     total_hashes_ph = st.empty()
 with col_m3:
-    miner_status_ph = st.empty()
+    difficulty_ph = st.empty()
+with col_m4:
+    win_prob_ph = st.empty()
 
 st.divider()
 
@@ -113,14 +115,32 @@ while True:
             hashrate = float(mining_data['Hashrate (H/s)'])
             total_hashes = int(mining_data['Total Hashes'])
             
+            # Difficulty (Check if column exists, else default)
+            difficulty = 80000000000000.0
+            if 'Difficulty' in mining_data:
+                difficulty = float(mining_data['Difficulty'])
+
             hashrate_ph.metric(label="Current Hashrate", value=f"{hashrate/1000:.2f} kH/s", delta="Mining Active")
             total_hashes_ph.metric(label="Total Hashes (Guesses)", value=f"{total_hashes:,}")
-            miner_status_ph.success("✅ Miner Connected to Network")
-        except:
-             miner_status_ph.warning("⚠️ Miner Starting...")
+            difficulty_ph.metric(label="Network Difficulty", value=f"{difficulty:,.0f}")
+            
+            # Probability Calculation
+            # Probability of finding a block = Hashrate / (Difficulty * 2^32) per second
+            # But roughly, time to find a block = Difficulty * 2^32 / Hashrate
+            if hashrate > 0:
+                seconds_to_win = (difficulty * (2**32)) / hashrate
+                years_to_win = seconds_to_win / (3600 * 24 * 365)
+                win_prob_ph.metric(label="Est. Time to Win", value=f"{years_to_win:,.0f} Years", delta="Solo Mining is Hard", delta_color="inverse")
+            else:
+                win_prob_ph.metric(label="Est. Time to Win", value="Infinity")
+
+        except Exception as e:
+            hashrate_ph.warning(f"Stats Error: {e}")
     else:
-        miner_status_ph.error("❌ Miner Offline (Run btc_miner.py)")
         hashrate_ph.metric("Current Hashrate", "0 H/s")
+        total_hashes_ph.metric("Total Hashes", "0")
+        difficulty_ph.metric("Network Difficulty", "Offline")
+        win_prob_ph.error("Miner Offline")
 
     # Update Wallet Hunter Stats
     df = load_data()
