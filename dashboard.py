@@ -6,6 +6,7 @@ import plotly.express as px
 
 # Configuration
 WALLET_FILE = 'wallets.csv'
+FOUND_FILE = 'found_wallets.csv'
 MINING_LOG_FILE = 'mining_stats.csv'
 REFRESH_RATE = 2  # Seconds
 
@@ -74,8 +75,20 @@ with col4:
 st.subheader("Recent Generated Wallets")
 recent_wallets_ph = st.empty()
 
+# Placeholder for FOUND wallets (VIP)
+st.subheader("🏆 Found Wallets (VIP List - Balance > 0 or Used)")
+found_wallets_table_ph = st.empty()
+
 # Placeholder for charts
 chart_ph = st.empty()
+
+def load_found_data():
+    if not os.path.exists(FOUND_FILE):
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(FOUND_FILE)
+    except:
+        return pd.DataFrame()
 
 def load_mining_data():
     if not os.path.exists(MINING_LOG_FILE):
@@ -144,6 +157,7 @@ while True:
 
     # Update Wallet Hunter Stats
     df = load_data()
+    df_found = load_found_data()
     
     if not df.empty:
         # Metrics
@@ -167,12 +181,16 @@ while True:
             used_wallets_ph.metric(label="Used Wallets (History)", value="0")
 
         # Recent Wallets Table (Show last 10)
-        # Handle cases where new columns might be missing in very fresh race condition
         cols_to_show = ['Timestamp', 'Type', 'Address', 'Balance (BTC)', 'Total Received (BTC)']
         existing_cols = [c for c in cols_to_show if c in df.columns]
-        
         recent_df = df.tail(10)[existing_cols].iloc[::-1]
         recent_wallets_ph.dataframe(recent_df, use_container_width=True, hide_index=True)
+
+        # VIP Table (Found Wallets)
+        if not df_found.empty:
+            found_wallets_table_ph.dataframe(df_found.iloc[::-1], use_container_width=True, hide_index=True)
+        else:
+            found_wallets_table_ph.info("No wallets found yet with Balance or History.")
 
         # Alert if funds found
         if not wallets_with_balance.empty:
