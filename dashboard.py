@@ -188,7 +188,22 @@ while True:
 
         # VIP Table (Found Wallets)
         if not df_found.empty:
-            found_wallets_table_ph.dataframe(df_found.iloc[::-1], use_container_width=True, hide_index=True)
+            # Create a display copy to add the Verdict column without modifying original
+            display_df = df_found.copy()
+            
+            # Add Verdict Column logic
+            def get_verdict(row):
+                if row['Balance (BTC)'] > 0:
+                    return "💰 JACKPOT - WITHDRAW NOW!"
+                elif row['Total Received (BTC)'] > 0:
+                    return "💀 EMPTY (History Only)"
+                return "Unknown"
+
+            display_df['Verdict'] = display_df.apply(get_verdict, axis=1)
+            
+            # Reorder columns to put Verdict first
+            cols = ['Verdict'] + [c for c in display_df.columns if c != 'Verdict']
+            found_wallets_table_ph.dataframe(display_df[cols].iloc[::-1], use_container_width=True, hide_index=True)
         else:
             found_wallets_table_ph.info("No wallets found yet with Balance or History.")
 
