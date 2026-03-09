@@ -31,19 +31,18 @@ def get_network_difficulty():
         pass
     return 80000000000000.0 # Fallback (approximate)
 
-def miner_worker(worker_id, block_header_prefix, start_nonce, range_size, stats_queue):
+def miner_worker(worker_id, block_header_prefix, start_nonce, stats_queue):
     """
-    Worker process that mines a specific range of nonces.
+    Worker process that mines continuously.
     """
     nonce = start_nonce
-    end_nonce = start_nonce + range_size
     hashes = 0
     start_time = time.time()
     
     # Pre-encode static parts for speed
     prefix_bytes = block_header_prefix.encode('utf-8')
     
-    while nonce < end_nonce:
+    while True:
         # Construct header (Simplified)
         header = prefix_bytes + str(nonce).encode('utf-8')
         
@@ -100,7 +99,7 @@ def start_mining_pool():
     # Create Workers
     workers = []
     num_workers = multiprocessing.cpu_count()
-    range_per_worker = 1000000000 // num_workers # Big range
+    start_nonce_base = 1000000000 # Start high
     
     # Header prefix
     prev_hash = block_info['hash']
@@ -112,7 +111,7 @@ def start_mining_pool():
     for i in range(num_workers):
         p = multiprocessing.Process(
             target=miner_worker,
-            args=(i, prefix, i * range_per_worker, range_per_worker, stats_queue)
+            args=(i, prefix, start_nonce_base * (i + 1), stats_queue)
         )
         p.daemon = True
         p.start()
