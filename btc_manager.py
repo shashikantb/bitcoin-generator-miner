@@ -9,6 +9,7 @@ from bit import Key
 # Configuration
 WALLET_FILE = 'wallets.csv'
 FOUND_FILE = 'found_wallets.csv'
+STATS_FILE = 'wallet_stats.csv'
 BATCH_SIZE = 20  # Reduced batch size for API compatibility
 GENERATE_LIMIT = 100  # Generate 100 before checking (faster feedback loop for brainwallets)
 
@@ -32,6 +33,40 @@ def create_wallet_database():
             writer = csv.writer(f)
             writer.writerow(['Timestamp', 'Type', 'Private Key (WIF)', 'Address', 'Balance (BTC)', 'Total Received (BTC)', 'Status'])
         print(f"Created found wallets database: {FOUND_FILE}")
+
+    if not os.path.exists(STATS_FILE):
+        with open(STATS_FILE, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'Timestamp',
+                'Total Wallets Generated',
+                'Total BTC Balance',
+                'Active Balance Wallets',
+                'Used Wallets (History)',
+                'Total Received (All Wallets)',
+            ])
+        print(f"Created wallet stats file: {STATS_FILE}")
+
+def write_wallet_stats(total_wallets, total_balance, active_wallets, used_wallets, total_received):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    with open(STATS_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            'Timestamp',
+            'Total Wallets Generated',
+            'Total BTC Balance',
+            'Active Balance Wallets',
+            'Used Wallets (History)',
+            'Total Received (All Wallets)',
+        ])
+        writer.writerow([
+            timestamp,
+            total_wallets,
+            f"{total_balance:.8f}",
+            active_wallets,
+            used_wallets,
+            f"{total_received:.8f}",
+        ])
 
 def generate_brainwallet():
     """Generates a key from a random combination of words."""
@@ -92,6 +127,12 @@ def start_mining_simulation():
     current_batch_wifs = []
     current_batch_addrs = []
     current_batch_types = []
+
+    total_wallets_generated = 0
+    total_btc_balance = 0.0
+    active_balance_wallets = 0
+    used_wallets_history = 0
+    total_received_all = 0.0
     
     try:
         while True:
@@ -141,30 +182,39 @@ def start_mining_simulation():
             with open(WALLET_FILE, 'a', newline='') as f:
                 writer = csv.writer(f)
                 
-                # We'll also open the found file in append mode if needed, but let's do it inside the loop to keep logic simple or open it once.
-                # Opening inside loop is inefficient if many hits, but hits are rare.
-                
                 for wif, addr, w_type in zip(current_batch_wifs, current_batch_addrs, current_batch_types):
                     data = final_results.get(addr, {'balance': 0.0, 'received': 0.0})
                     bal = data['balance']
                     rec = data['received']
                     
-                    # Save to main DB
                     writer.writerow([timestamp, w_type, wif, addr, bal, rec])
                     
                     status = None
                     if bal > 0:
                         status = "JACKPOT"
+                        active_balance_wallets += 1
+                        total_btc_balance += bal
                         print(f"\n[!!!] JACKPOT! FUNDS FOUND! Address: {addr} | Balance: {bal} BTC")
                     elif rec > 0:
                         status = "USED_HISTORY"
+                        used_wallets_history += 1
                         print(f"\n[!] FOUND USED WALLET! Address: {addr} | History: {rec} BTC (Empty Now)")
                     
-                    # Save to Found DB if special
+                    total_received_all += rec
+                    total_wallets_generated += 1
+                    
                     if status:
                         with open(FOUND_FILE, 'a', newline='') as f_found:
                             writer_found = csv.writer(f_found)
                             writer_found.writerow([timestamp, w_type, wif, addr, bal, rec, status])
+
+            write_wallet_stats(
+                total_wallets=total_wallets_generated,
+                total_balance=total_btc_balance,
+                active_wallets=active_balance_wallets,
+                used_wallets=used_wallets_history,
+                total_received=total_received_all,
+            )
             
             print(f"Batch Complete. Checked {len(current_batch_addrs)} keys.")
             

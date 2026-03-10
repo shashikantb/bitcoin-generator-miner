@@ -7,6 +7,7 @@ import plotly.express as px
 # Configuration
 WALLET_FILE = 'wallets.csv'
 FOUND_FILE = 'found_wallets.csv'
+WALLET_STATS_FILE = 'wallet_stats.csv'
 MINING_LOG_FILE = 'mining_stats.csv'
 REFRESH_RATE = 2  # Seconds
 
@@ -119,6 +120,38 @@ def load_data():
         # st.error(f"Error reading wallet database: {e}")
         return pd.DataFrame()
 
+def load_wallet_stats():
+    if not os.path.exists(WALLET_STATS_FILE):
+        return None
+    try:
+        df = pd.read_csv(WALLET_STATS_FILE)
+        if df.empty:
+            return None
+        return df.iloc[-1]
+    except:
+        return None
+
+def load_recent_wallet_rows(max_rows=10, max_lines=400):
+    if not os.path.exists(WALLET_FILE):
+        return pd.DataFrame()
+    try:
+        from collections import deque
+        lines = deque(maxlen=max_lines)
+        with open(WALLET_FILE, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                lines.append(line)
+
+        text = "".join(lines)
+        import io
+        df = pd.read_csv(io.StringIO(text))
+        if df.empty:
+            return pd.DataFrame()
+        cols_to_show = ['Timestamp', 'Type', 'Address', 'Balance (BTC)', 'Total Received (BTC)']
+        existing_cols = [c for c in cols_to_show if c in df.columns]
+        return df.tail(max_rows)[existing_cols].iloc[::-1]
+    except:
+        return pd.DataFrame()
+
 # Main Loop
 while True:
     # Update Mining Stats
@@ -156,86 +189,51 @@ while True:
         win_prob_ph.error("Miner Offline")
 
     # Update Wallet Hunter Stats
-    df = load_data()
+    df_stats = load_wallet_stats()
     df_found = load_found_data()
-    
-    if not df.empty:
-        # Metrics
-        total_wallets = len(df)
-        total_balance = df['Balance (BTC)'].sum()
-        wallets_with_balance = df[df['Balance (BTC)'] > 0]
-        wallets_used = df[df['Total Received (BTC)'] > 0]
-        
-        # Update metrics using placeholders
+
+    if df_stats is not None:
+        try:
+            total_wallets = int(df_stats['Total Wallets Generated'])
+            total_balance = float(df_stats['Total BTC Balance'])
+            active_wallets = int(df_stats['Active Balance Wallets'])
+            used_wallets = int(df_stats['Used Wallets (History)'])
+        except:
+            total_wallets = 0
+            total_balance = 0.0
+            active_wallets = 0
+            used_wallets = 0
+
         total_wallets_ph.metric(label="Total Wallets Generated", value=f"{total_wallets:,}")
         total_balance_ph.metric(label="Total BTC Balance", value=f"{total_balance:.8f} BTC")
-        
-        if not wallets_with_balance.empty:
-            found_wallets_ph.metric(label="Active Balance", value=f"{len(wallets_with_balance)}", delta="JACKPOT!", delta_color="normal")
+        found_wallets_ph.metric(label="Active Balance", value=f"{active_wallets:,}" if active_wallets else "0")
+        used_wallets_ph.metric(label="Used Wallets (History)", value=f"{used_wallets:,}" if used_wallets else "0")
+        recent_df = load_recent_wallet_rows(max_rows=10)
+        if not recent_df.empty:
+            recent_wallets_ph.dataframe(recent_df, use_container_width=True, hide_index=True)
         else:
-            found_wallets_ph.metric(label="Active Balance", value="0")
-            
-        if not wallets_used.empty:
-            used_wallets_ph.metric(label="Used Wallets (History)", value=f"{len(wallets_used)}", delta="FOUND!", delta_color="normal")
-        else:
-            used_wallets_ph.metric(label="Used Wallets (History)", value="0")
-
-        # Recent Wallets Table (Show last 10)
-        cols_to_show = ['Timestamp', 'Type', 'Address', 'Balance (BTC)', 'Total Received (BTC)']
-        existing_cols = [c for c in cols_to_show if c in df.columns]
-        recent_df = df.tail(10)[existing_cols].iloc[::-1]
-        recent_wallets_ph.dataframe(recent_df, use_container_width=True, hide_index=True)
-
-        # VIP Table (Found Wallets)
-        if not df_found.empty:
-            # Create a display copy to add the Verdict column without modifying original
-            display_df = df_found.copy()
-            
-            # Add Verdict Column logic
-            def get_verdict(row):
-                if row['Balance (BTC)'] > 0:
-                    return "💰 JACKPOT - WITHDRAW NOW!"
-                elif row['Total Received (BTC)'] > 0:
-                    return "💀 EMPTY (History Only)"
-                return "Unknown"
-
-            display_df['Verdict'] = display_df.apply(get_verdict, axis=1)
-            
-            # Reorder columns to put Verdict first
-            cols = ['Verdict'] + [c for c in display_df.columns if c != 'Verdict']
-            found_wallets_table_ph.dataframe(display_df[cols].iloc[::-1], use_container_width=True, hide_index=True)
-        else:
-            found_wallets_table_ph.info("No wallets found yet with Balance or History.")
-
-        # Alert if funds found
-        if not wallets_with_balance.empty:
-            st.success(f"🚨 FUNDS FOUND! {len(wallets_with_balance)} wallet(s) have a balance! Check wallets.csv immediately.")
-            st.dataframe(wallets_with_balance, use_container_width=True)
-            
-        # Alert if used wallets found (but empty)
-        if not wallets_used.empty and wallets_with_balance.empty:
-             st.info(f"👀 Found {len(wallets_used)} wallets that were used in the past! (Balance is 0 now)")
+            recent_wallets_ph.info("No recent wallet rows available yet.")
     else:
         total_wallets_ph.metric(label="Total Wallets Generated", value="0")
         total_balance_ph.metric(label="Total BTC Balance", value="0.00000000 BTC")
         found_wallets_ph.metric(label="Active Balance", value="0")
         used_wallets_ph.metric(label="Used Wallets (History)", value="0")
-        recent_wallets_ph.info("No wallet data yet. Start the wallet generator so it can create wallets.csv.")
+        recent_wallets_ph.info("No wallet stats yet. Start the wallet hunter so it can create wallet_stats.csv.")
 
-        if not df_found.empty:
-            display_df = df_found.copy()
+    if not df_found.empty:
+        display_df = df_found.copy()
 
-            def get_verdict(row):
-                if row['Balance (BTC)'] > 0:
-                    return "💰 JACKPOT - WITHDRAW NOW!"
-                elif row['Total Received (BTC)'] > 0:
-                    return "💀 EMPTY (History Only)"
-                return "Unknown"
+        def get_verdict(row):
+            if row['Balance (BTC)'] > 0:
+                return "💰 JACKPOT - WITHDRAW NOW!"
+            elif row['Total Received (BTC)'] > 0:
+                return "💀 EMPTY (History Only)"
+            return "Unknown"
 
-            display_df['Verdict'] = display_df.apply(get_verdict, axis=1)
-            cols = ['Verdict'] + [c for c in display_df.columns if c != 'Verdict']
-            found_wallets_table_ph.dataframe(display_df[cols].iloc[::-1], use_container_width=True, hide_index=True)
-        else:
-            found_wallets_table_ph.info("No VIP wallets yet (Balance > 0 or Used).")
+        display_df['Verdict'] = display_df.apply(get_verdict, axis=1)
+        cols = ['Verdict'] + [c for c in display_df.columns if c != 'Verdict']
+        found_wallets_table_ph.dataframe(display_df[cols].iloc[::-1], use_container_width=True, hide_index=True)
+    else:
+        found_wallets_table_ph.info("No VIP wallets yet (Balance > 0 or Used).")
 
     time.sleep(REFRESH_RATE)
