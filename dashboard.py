@@ -215,5 +215,27 @@ while True:
         # Alert if used wallets found (but empty)
         if not wallets_used.empty and wallets_with_balance.empty:
              st.info(f"👀 Found {len(wallets_used)} wallets that were used in the past! (Balance is 0 now)")
+    else:
+        total_wallets_ph.metric(label="Total Wallets Generated", value="0")
+        total_balance_ph.metric(label="Total BTC Balance", value="0.00000000 BTC")
+        found_wallets_ph.metric(label="Active Balance", value="0")
+        used_wallets_ph.metric(label="Used Wallets (History)", value="0")
+        recent_wallets_ph.info("No wallet data yet. Start the wallet generator so it can create wallets.csv.")
+
+        if not df_found.empty:
+            display_df = df_found.copy()
+
+            def get_verdict(row):
+                if row['Balance (BTC)'] > 0:
+                    return "💰 JACKPOT - WITHDRAW NOW!"
+                elif row['Total Received (BTC)'] > 0:
+                    return "💀 EMPTY (History Only)"
+                return "Unknown"
+
+            display_df['Verdict'] = display_df.apply(get_verdict, axis=1)
+            cols = ['Verdict'] + [c for c in display_df.columns if c != 'Verdict']
+            found_wallets_table_ph.dataframe(display_df[cols].iloc[::-1], use_container_width=True, hide_index=True)
+        else:
+            found_wallets_table_ph.info("No VIP wallets yet (Balance > 0 or Used).")
 
     time.sleep(REFRESH_RATE)
